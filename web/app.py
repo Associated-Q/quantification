@@ -30,6 +30,7 @@ import gann7  # noqa: E402
 import multi_tf as mtf  # noqa: E402
 import wave as wv  # noqa: E402
 import wave_ai as wai  # noqa: E402
+import plan as plan_mod  # noqa: E402
 import paper as pp  # noqa: E402
 import position as pos  # noqa: E402
 import snapshot as snap  # noqa: E402
@@ -1199,6 +1200,36 @@ def wave_ai_choice(symbol: str, period: str = "day", force: bool = False):
                             detail={"error": "wave_choice",
                                     "message": str(exc)[:800]}) from exc
     return _cache_set(key, out, 1800)
+
+
+@app.get("/api/plan/{symbol}")
+def plan_detail(symbol: str):
+    """长线/短线条件式计划：支撑压力、加减仓区间与失效位。"""
+    sym = _normalize_symbol(symbol)
+    day = _validated_bars(mtf.ensure(sym, "day"), sym, "day", "trade_date")
+    week = _validated_bars(mtf.ensure(sym, "week"), sym, "week", "trade_date")
+    q = {}
+    try:
+        q = cached_quotes([sym]).get(sym) or {}
+    except Exception as e:                       # noqa: BLE001
+        logger.warning("quote failed for %s: %s", sym, e)
+    price = float(q.get("price") or day["close"].iloc[-1])
+    key = ("plan", sym, str(day["trade_date"].iloc[-1]), round(price, 3))
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
+    analysis = mtf.analyze(sym, price)
+    try:
+        gann = gann7.analyze(day)
+    except ValueError as e:
+        logger.warning("gann7 failed for %s: %s", sym, e)
+        gann = None
+    day_wave = wv.analyze_wave(day)
+    week_wave = (analysis.get("week") or {}).get("wave") or wv.analyze_wave(week)
+    out = plan_mod.build(sym, q.get("name", sym), day, week, price,
+                         analysis, gann, day_wave, week_wave)
+    return _cache_set(key, out, 60)
 
 
 REVIEW_PROMPT = """你在复核一只 A 股标的的规则化结论。请只基于下列信息作答。

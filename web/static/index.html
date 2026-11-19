@@ -170,6 +170,17 @@
                  background: rgba(11, 15, 22, .72); border-radius: 8px;
                  pointer-events: none; }
   .chart-empty[hidden] { display: none; }
+  .plan-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+  .plan-col { flex: 1 1 320px; background: #0f141e; border: 1px solid var(--line);
+              border-radius: 8px; padding: 10px 13px; }
+  .plan-head { display: flex; gap: 8px; align-items: center; font-size: 14px;
+               font-weight: 600; margin-bottom: 4px; }
+  .plan-line { font-size: 12.5px; line-height: 1.6; margin-top: 4px; }
+  .plan-line .k { color: var(--muted); margin-right: 4px; }
+  .plan-cond { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .plan-cond .conflict { margin-top: 3px; }
+  #d-plan { margin-top: 12px; }
+
   .review-line { margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--line);
                  font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden;
                  text-overflow: ellipsis; }
@@ -353,6 +364,7 @@
       <div class="why" id="wave-ai" style="margin-top:4px"></div>
       <div class="why" id="chint" style="margin-top:4px">滚轮缩放 · 按住或单指拖动平移 · 悬停查看数值</div>
     </div>
+    <div id="d-plan"></div>
     <div id="d-tf"></div>
     <div id="d-body"></div>
     <div id="d-gann7" hidden></div>
@@ -1417,6 +1429,7 @@ async function showDetail(sym, origin = 'watch') {
   $('#d-head').innerHTML = stateHTML('加载中…', true);
   $('#d-tf').innerHTML = ''; $('#d-body').innerHTML = '';
   $('#d-gann7').innerHTML = ''; $('#d-gann7').hidden = true;
+  $('#d-plan').innerHTML = stateHTML('交易计划加载中…', true);
   setAnalysisBlocks(true);
   $('#d-hist').innerHTML = stateHTML('建议历史加载中…', true);
   KChart.reset();
@@ -1424,6 +1437,7 @@ async function showDetail(sym, origin = 'watch') {
   loadAIRegion(sym, version);
   loadDetailHolding(sym, version);
   loadSnapshotHistory(sym, version);
+  loadPlan(sym, version);
   const result = await Promise.allSettled([
     request('/api/detail/' + encodeURIComponent(sym)),
     KChart.load(sym, 'day')
@@ -1444,6 +1458,73 @@ async function showDetail(sym, origin = 'watch') {
     $('#chint').textContent = 'K线加载失败，请稍后重试';
     reportError('K线加载失败', result[1].reason);
   }
+}
+
+async function loadPlan(sym, version) {
+  try {
+    const p = await request('/api/plan/' + encodeURIComponent(sym), { timeout: 60000 });
+    if (version !== detailVersion || sym !== curSymbol) return;
+    renderPlan(p);
+  } catch (e) {
+    if (version !== detailVersion || sym !== curSymbol) return;
+    $('#d-plan').innerHTML = stateHTML('交易计划加载失败：' + (e.message || '未知错误'));
+    reportError('交易计划加载失败', e);
+  }
+}
+
+function renderPlan(p) {
+  const box = $('#d-plan');
+  if (!box) return;
+  const px = v => (v == null || !Number.isFinite(Number(v))) ? '—' : Number(v).toFixed(3);
+  const pct = v => (v == null || !Number.isFinite(Number(v))) ? '—'
+    : (Number(v) > 0 ? '+' : '') + Number(v).toFixed(2) + '%';
+  const biasCls = b => b === '偏多' ? 'b-add' : (b === '偏空' ? 'b-cut' : 'b-hold');
+  const zone = (label, z) => z ? `<div class="plan-line"><span class="k">${label}</span>${px(z.low)} ~ ${px(z.high)}
+      <span class="why">${esc((z.sources || []).join(' + '))}${z.strength != null ? ' · 强度 ' + esc(z.strength) : ''}</span></div>` : '';
+  const stop = (s, label) => s ? `<div class="plan-line"><span class="k">${label}</span>${px(s.price)}
+      <span class="why">${esc(s.why || '')}</span></div>` : '';
+  const col = (title, d) => {
+    if (!d) return '';
+    return `<div class="plan-col">
+      <div class="plan-head">${title}<span class="badge ${biasCls(d.bias)}">${esc(d.bias || '—')}</span></div>
+      <div class="plan-line">${esc(d.action || '')}</div>
+      <div class="why" style="margin-top:3px">${esc(d.why || '')}</div>
+      ${zone('加仓区', d.add_zone)}
+      ${zone('减仓区', d.reduce_zone)}
+      ${stop(d.stop, '失效')}
+      ${d.gann ? `<div class="why" style="margin-top:4px">江恩：${esc(d.gann)}</div>` : ''}
+      ${d.size ? `<div class="why">${esc(d.size)}</div>` : ''}
+    </div>`;
+  };
+  const lvRow = (kind, x) => `<tr>
+    <td>${kind}</td>
+    <td class="r num">${px(x.price)}</td>
+    <td class="r num">${pct(x.distance_pct)}</td>
+    <td class="r num">${x.distance_atr == null ? '—' : esc(x.distance_atr) + ' ATR'}</td>
+    <td>${esc((x.sources || []).join(' + '))}</td>
+    <td class="r num">${x.strength == null ? '—' : esc(x.strength)}</td>
+  </tr>`;
+  const levels = p.levels || {};
+  const rows = [...(levels.support || []).map(x => lvRow('支撑', x)),
+                ...(levels.resistance || []).map(x => lvRow('压力', x))].join('');
+  const conds = (p.conditions || []).map(x => `<div class="why">· ${esc(x)}</div>`).join('');
+  const warns = (p.warnings || []).map(x => `<div class="conflict">· ${esc(x)}</div>`).join('');
+  const rule = p.rule_action
+    ? `<span class="why">规则评分：${esc(p.rule_action)}${p.rule_target_position == null ? ''
+        : ' · 目标仓位 ' + Math.round(p.rule_target_position * 100) + '%'}</span>` : '';
+  box.innerHTML = `<div class="card">
+    <div class="hist-title">周期与位置建议
+      <span class="why">日/周/月结构 · ${esc(p.asof || '')} · ATR ${px(p.atr)}</span>
+    </div>
+    <div class="why" style="margin-bottom:8px">现价 ${px(p.price)}　${rule}</div>
+    <div class="plan-grid">${col('长线', p.long)}${col('短线', p.short)}</div>
+    ${rows ? `<div class="tablewrap" style="margin-top:12px"><table class="ths">
+      <thead><tr><th>位置</th><th class="r">价格</th><th class="r">距现价</th>
+        <th class="r">距离</th><th>依据</th><th class="r">强度</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` : ''}
+    <div class="plan-cond">${conds}${warns}</div>
+    <div class="why" style="margin-top:8px">${esc(p.disclaimer || '')}</div>
+  </div>`;
 }
 
 function setAnalysisBlocks(big) {
