@@ -1,0 +1,44 @@
+# ---- 密钥与本地配置 ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*secret*
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# ---- 运行数据与输出 ----
+logs/
+backups/
+*.log
+*.duckdb
+*.db
+*.sqlite*
+
+# ---- 体量大或带版权的原始资料 ----
+*.pdf
+*.zip
+*.xlsx
+unzipped/
+新增/
+全部评论_*.txt
+
+# ---- 检索索引与语料（本地重建） ----
+_distill/out/
+_distill/out_vlm/
+_distill/_stale/
+_distill/rag/*.jsonl
+_distill/rag/*.npy
+_distill/rag/*.bak
+_distill/rag/_tmp_*
+_distill/rag/*_out.txt
+_distill/rag/*.log
+
+# ---- 编辑器 ----
+.vscode/

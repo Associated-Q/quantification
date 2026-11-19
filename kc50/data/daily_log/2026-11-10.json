@@ -1,0 +1,73 @@
+{
+  "date": "2026-11-10",
+  "close": 1265.02,
+  "high": 1291.09,
+  "low": 1262.25,
+  "atr14": 59.072690031219025,
+  "ma20": 1283.9945,
+  "wave": "结构不明",
+  "wave_detail": "仅一段推动+一段调整，浪级无法确定",
+  "wave_invalid": 1329.14,
+  "pivots_last": [
+    {
+      "date": "2026-09-22",
+      "kind": "H",
+      "price": 1707.67
+    },
+    {
+      "date": "2026-11-03",
+      "kind": "L",
+      "price": 1132.33
+    },
+    {
+      "date": "2026-11-05",
+      "kind": "H",
+      "price": 1329.14
+    }
+  ],
+  "fib_swing": {
+    "label": "当前波段",
+    "start_date": "2026-09-22",
+    "start_price": 1707.67,
+    "end_date": "2026-11-03",
+    "end_price": 1132.33,
+    "high": 1707.67,
+    "low": 1132.33,
+    "range": 575.3400000000001,
+    "direction": -1,
+    "start_idx": 902,
+    "end_idx": 926,
+    "bars": 24,
+    "wave_kind": "high->low"
+  },
+  "prob3": {
+    "raw": 0.5650559097132696,
+    "used": 0.5191011235955056,
+    "base": 0.5191011235955056,
+    "ok": false
+  },
+  "prob5": {
+    "raw": 0.524713726843077,
+    "used": 0.5124153498871332,
+    "base": 0.5124153498871332,
+    "ok": false
+  },
+  "model_valid": {
+    "3": false,
+    "5": false
+  },
+  "direction": "观望",
+  "yijing": {
+    "date": "2026-11-10",
+    "upper": "震",
+    "lower": "巽",
+    "upper_sym": "☳",
+    "lower_sym": "☴",
+    "upper_num": 4,
+    "lower_num": 5,
+    "moving": 1,
+    "name": "雷风恒",
+    "changed_name": "雷天大壮",
+    "seed": "年支7+月11+日10+时9=37"
+  }
+}
