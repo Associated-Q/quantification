@@ -40,7 +40,7 @@ echo   Press Ctrl+C to stop
 echo ============================================
 echo.
 
-if /i not "%NO_BROWSER%"=="1" start "" cmd /c "timeout /t 4 >nul & start "" http://127.0.0.1:%PORT%"
+if /i not "%NO_BROWSER%"=="1" start "" cmd /c "timeout /t 4 >nul & start "" http://127.0.0.1:%PORT%/?v=%RANDOM%%RANDOM%"
 
 pushd web
 "%PY%" -m uvicorn app:app --host 127.0.0.1 --port %PORT%
