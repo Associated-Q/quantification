@@ -94,3 +94,32 @@ def test_missing_gann_and_invalid_waves_do_not_crash():
 def test_invalid_price_hard_errors():
     with pytest.raises(ValueError):
         plan.build_levels(0, 1.0, make_df(), make_df(), {}, {})
+
+
+def test_long_plan_without_lower_support_does_not_crash():
+    levels = {"support": [{"price": 95.0, "strength": 2.0, "sources": ["测试支撑"],
+                           "bars_ago": 10, "distance_pct": -5.0, "distance_atr": 1.0}],
+              "resistance": [], "atr": 2.0}
+    out = plan._long_plan(levels, 100.0, 2.0, fake_analysis(True),
+                          {"valid": True, "direction": "上升", "pattern": "推动浪"})
+    assert out["bias"] == "偏多"
+    assert out["add_zone"]["price"] == 95.0
+    assert out["stop"]["price"] <= out["add_zone"]["low"]
+
+
+def test_narrow_range_disagreement_suggests_waiting():
+    levels = {"support": [{"price": 99.0, "strength": 2.0, "sources": ["支撑"],
+                           "bars_ago": 5, "distance_pct": -0.5, "distance_atr": 0.25}],
+              "resistance": [{"price": 100.0, "strength": 2.0, "sources": ["压力"],
+                              "bars_ago": 5, "distance_pct": 0.5, "distance_atr": 0.25}],
+              "atr": 2.0}
+    short = plan._short_plan(levels, 99.5, 2.0, {"valid": False},
+                             {"current": {"side": 0}})
+    assert short["bias"] == "分歧" and "太窄" in short["action"]
+    assert short["add_zone"] is None and short["reduce_zone"] is None
+    long_plan = plan._long_plan(
+        levels, 99.5, 2.0,
+        {"week": {"trend": {"up": True}},
+         "month": {"trend": {"up": False, "ma_fast": 1, "ma_slow": 2}}}, {})
+    assert long_plan["bias"] == "分歧" and "太窄" in long_plan["action"]
+    assert long_plan["add_zone"] is None and long_plan["reduce_zone"] is None

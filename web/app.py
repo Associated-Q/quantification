@@ -1239,7 +1239,18 @@ def plan_detail(symbol: str):
     if cached is not None:
         return cached
 
-    analysis = mtf.analyze(sym, price)
+    try:
+        analysis = mtf.analyze(sym, price)
+    except Exception as e:                       # noqa: BLE001
+        # 月线数据偶发 501 时不要让整个计划 500：退化为只用周线
+        logger.warning("plan analysis failed for %s: %s", sym, e)
+        analysis = {"week": {}, "month": {}, "action": None,
+                    "target_position": None,
+                    "notes": [f"周月分析失败：{type(e).__name__}"]}
+    if not (analysis.get("week") or {}).get("trend"):
+        analysis.setdefault("week", {})["trend"] = mtf._trend(week, 20, 60)
+    if not (analysis.get("week") or {}).get("wave"):
+        analysis["week"]["wave"] = wv.analyze_wave(week)
     try:
         gann = gann7.analyze(day)
     except ValueError as e:

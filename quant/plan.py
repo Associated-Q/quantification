@@ -201,7 +201,7 @@ def _long_plan(levels, price, atr, analysis, week_wave):
             else:
                 action = f"回踩 {at['price']} 附近且收盘不破，可分批加仓"
             low = _stop_below(levels, at["price"])
-            stop = {"price": low["price"] if low else round(at["low"], 3),
+            stop = {"price": low["price"] if low else add["low"],
                     "why": "收盘跌破则本次加仓失效" if low else "跌破加仓区下沿失效"}
         res = _pick(levels, price, atr, "resistance", 2.0, 3.0)
         if res:
@@ -219,12 +219,16 @@ def _long_plan(levels, price, atr, analysis, week_wave):
         action = "观望；等周线与月线方向一致后再决定加或减"
         sup = _pick(levels, price, atr, "support", 2.0, 2.0)
         res = _pick(levels, price, atr, "resistance", 2.0, 2.0)
-        if sup:
-            add = _zone(sup, price, atr)
-        if res:
-            reduce = _zone(res, price, atr)
-        if sup and res:
-            action += f"，区间参考 {sup['price']} ~ {res['price']}"
+        if sup and res and (res["price"] - sup["price"]) < max(1.0 * (atr or 0.0),
+                                                             price * 0.02):
+            action += "；支撑与压力过近，区间太窄，等方向选择"
+        else:
+            if sup:
+                add = _zone(sup, price, atr)
+            if res:
+                reduce = _zone(res, price, atr)
+            if sup and res:
+                action += f"，区间参考 {sup['price']} ~ {res['price']}"
 
     return {"bias": bias, "action": action, "why": "；".join(reasons) or "周期数据不足",
             "add_zone": add, "reduce_zone": reduce, "stop": stop,
@@ -272,7 +276,7 @@ def _short_plan(levels, price, atr, day_wave, gann):
             add = _zone(at, price, atr)
             action = f"不追高；回踩 {at['price']} 且收盘不破可短加"
             low = _stop_below(levels, at["price"])
-            stop = {"price": low["price"] if low else round(at["low"], 3),
+            stop = {"price": low["price"] if low else add["low"],
                     "why": "跌破短加支撑失效"}
         else:
             action = "偏多但离支撑较远，等回踩，不追高"
@@ -291,12 +295,16 @@ def _short_plan(levels, price, atr, day_wave, gann):
     else:
         sup = _pick(levels, price, atr, "support", 1.5, 1.5)
         res = _pick(levels, price, atr, "resistance", 1.5, 1.5)
-        if sup:
-            add = _zone(sup, price, atr)
-        if res:
-            reduce = _zone(res, price, atr)
-        action = (f"区间 {sup['price']} ~ {res['price']} 内高抛低吸/观望"
-                  if sup and res else "方向分歧，观望")
+        if sup and res and (res["price"] - sup["price"]) < max(1.0 * (atr or 0.0),
+                                                             price * 0.02):
+            action = "支撑与压力过近，区间太窄，观望等方向"
+        else:
+            if sup:
+                add = _zone(sup, price, atr)
+            if res:
+                reduce = _zone(res, price, atr)
+            action = (f"区间 {sup['price']} ~ {res['price']} 内高抛低吸/观望"
+                      if sup and res else "方向分歧，观望")
 
     return {"bias": bias, "action": action, "why": "；".join(reasons),
             "add_zone": add, "reduce_zone": reduce, "stop": stop,
@@ -323,6 +331,8 @@ def build(symbol, name, day_df, week_df, price, analysis, gann, day_wave, week_w
         warnings.append(f"规则评分当前为「{rule_action}」，但周/月结构偏多；若回踩支撑不破，不必一次减完。")
     if not (week_wave or {}).get("valid"):
         warnings.append("周线浪型未通过校验，长线方向主要看周/月均线。")
+    if not (analysis.get("month") or {}).get("trend"):
+        warnings.append("月线数据不可用，长线方向仅看周线。")
     if not (day_wave or {}).get("valid"):
         warnings.append("日线浪型未通过校验，短线方向主要看均线与江恩窗口。")
     if long_plan["bias"] == "偏多" and short_plan["bias"] == "偏空":
