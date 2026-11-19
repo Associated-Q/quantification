@@ -19,6 +19,7 @@ import wave as wv
 
 TABLES = {"day": "kline_daily", "week": "kline_weekly", "month": "kline_monthly"}
 MIN_BARS = {"day": 70, "week": 70, "month": 30}
+FETCH_COUNTS = {"day": 800, "week": 740, "month": 175}
 
 
 def ensure(sym, period):
@@ -28,7 +29,7 @@ def ensure(sym, period):
     last = None if df.empty else str(df["trade_date"].iloc[-1])[:10]
     stale = realtime.is_stale(sym, last, table)
     if len(df) < MIN_BARS[period] or stale:
-        count = {"day": 800, "week": 740, "month": 175}[period]
+        count = FETCH_COUNTS[period]
         data_source.save(data_source.fetch_kline(sym, period, count=count), table=table)
         df = realtime.period_history(sym, table)
     return df

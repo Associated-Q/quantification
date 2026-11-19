@@ -47,7 +47,7 @@ uvicorn app:app --reload --port 8000
 | POST | `/api/ask` | 检索 + 模型生成答案，约 30s |
 | GET | `/api/watchlist` | 自选列表（实时行情 + 日/周/月三周期结论） |
 | POST/DELETE | `/api/watchlist[/{code}]` | 增加 / 移除自选 |
-| GET | `/api/kline/{symbol}?period=day\|week\|month\|m60\|m30\|m15\|m5` | K 线 + MA5/10/20/60 + `wave`（多级别浪组与斐波那契位） |
+| GET | `/api/kline/{symbol}?period=day\|week\|month\|m60\|m30\|m15\|m5&limit=1600` | K 线 + MA5/10/20/60 + `wave`（多级别浪组、放宽候选与斐波那契位）；日线历史只读翻页，不写回回测库 |
 | POST | `/api/wave/ai/{symbol}?period=day` | 模型在规则枚举的浪组里选主数法，返回编号、理由与切换后的斐波那契位；约 30s，按标的/周期缓存 30 分钟 |
 | GET | `/api/detail/{symbol}` | 个股详情（行情 + 完整规则依据） |
 | GET | `/api/plan/{symbol}` | 长线/短线条件式计划：支撑压力、加减仓区间、失效位与条件；约 1s |

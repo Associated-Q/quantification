@@ -972,14 +972,22 @@ def _wave_overlay(df, result, tcol):
     def series(pivots):
         return [point(p) for p in pivots]
 
-    groups = []
-    for g in wv.wave_groups(df):
-        groups.append({
-            "degree": g["degree"], "degree_name": g["degree_name"],
-            "threshold_pct": g["threshold_pct"], "up": g["up"],
-            "pattern": g["pattern"], "failed": g["failed"],
-            "span_bars": g["span_bars"], "pivots": series(g["pivots"]),
-        })
+    def pack(g):
+        return {"degree": g["degree"], "degree_name": g["degree_name"],
+                "threshold_pct": g["threshold_pct"], "up": g["up"],
+                "pattern": g["pattern"], "failed": g["failed"],
+                "span_bars": g["span_bars"], "pivots": series(g["pivots"])}
+
+    strict = wv.wave_groups(df)
+    strict_keys = {tuple(int(x[0]) for x in g["pivots"]) for g in strict}
+    groups = [pack(g) for g in strict]
+    relaxed = []
+    for g in wv.wave_groups(df, strict=False):
+        if tuple(int(x[0]) for x in g["pivots"]) in strict_keys:
+            continue
+        item = pack(g)
+        item["relaxed"] = True
+        relaxed.append(item)
 
     current = series(result.get("pivots") or [])
     valid = bool(result.get("valid")) and len(current) == 6
@@ -1017,6 +1025,7 @@ def _wave_overlay(df, result, tcol):
         "pattern": result.get("pattern"),
         "position": result.get("position"),
         "groups": groups,
+        "relaxed": relaxed,
         "degrees": [degree_map[k] for k in sorted(degree_map)],
         "candidate": [] if valid else current,
         "fib": None,
@@ -1052,6 +1061,31 @@ def _wave_overlay(df, result, tcol):
                           "threshold_pct": th,
                           "levels": wv.fib_levels(a[1], b[1])}
     return overlay
+
+
+def _chart_bars(sym, period, limit):
+    """取图表用的 K 线。日线不够时只读拉长历史，不写回 kline_daily。
+
+    回测直接读 kline_daily，图表这里如果写回更长的历史会改变回测样本，
+    所以扩展只在内存里用，落库仍由 mtf.ensure 按原 800 根维护。
+    """
+    if period in ("day", "week", "month"):
+        df = mtf.ensure(sym, period)
+        tcol = "trade_date"
+        if period == "day" and len(df) < limit:
+            import data_source as ds
+            try:
+                longer = ds.fetch_kline_history(sym, "day", count=max(limit, 1500))
+            except Exception as e:               # noqa: BLE001
+                logger.warning("extend day history failed for %s: %s", sym, e)
+                longer = None
+            if longer is not None and len(longer) > len(df):
+                df = longer
+    else:
+        import data_source as ds
+        df = ds.fetch_minute(sym, int(period[1:]), 1023)
+        tcol = "trade_time"
+    return _validated_bars(df, sym, period, tcol).tail(limit).reset_index(drop=True), tcol
 
 
 @app.get("/api/detail/{symbol}")
@@ -1117,20 +1151,13 @@ def kline(symbol: str, period: str = "day", limit: int = 240):
         raise HTTPException(status_code=422, detail=f"不支持的周期: {period}")
     # 先规范化再查缓存：600000 与 sh600000 共用同一份缓存，非法代码直接 422。
     sym = _normalize_symbol(symbol)
-    limit = max(60, min(limit, 1023))
+    limit = max(60, min(limit, 2000))
     cache_ttl = 30 if period.startswith("m") else 60
     key = ("kline", sym, period, limit)
     cached = _cache_get(key)
     if cached is not None:
         return cached
-    if period in ("day", "week", "month"):
-        df = mtf.ensure(sym, period)
-        tcol = "trade_date"
-    else:
-        import data_source as ds
-        df = ds.fetch_minute(sym, int(period[1:]), 1023)
-        tcol = "trade_time"
-    df = _validated_bars(df, sym, period, tcol).tail(limit).reset_index(drop=True)
+    df, tcol = _chart_bars(sym, period, limit)
 
     close = df["close"].astype(float)
     mas = {f"ma{n}": [None if pd.isna(x) else round(float(x), 3)
@@ -1158,14 +1185,7 @@ def wave_ai_choice(symbol: str, period: str = "day", force: bool = False):
     if period not in ("day", "week", "month", "m5", "m15", "m30", "m60"):
         raise HTTPException(status_code=422, detail=f"不支持的周期: {period}")
     sym = _normalize_symbol(symbol)
-    if period in ("day", "week", "month"):
-        df = mtf.ensure(sym, period)
-        tcol = "trade_date"
-    else:
-        import data_source as ds
-        df = ds.fetch_minute(sym, int(period[1:]), 1023)
-        tcol = "trade_time"
-    df = _validated_bars(df, sym, period, tcol).tail(800).reset_index(drop=True)
+    df, tcol = _chart_bars(sym, period, 1600)
 
     key = ("wave_ai", sym, period, str(df[tcol].iloc[-1]), len(df))
     if not force:

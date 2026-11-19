@@ -357,6 +357,9 @@
         <span class="ptab" data-p="m15">15分</span>
         <span class="ptab" data-p="m5">5分</span>
         <button id="ai-wave" class="mini ghost" type="button" style="margin-left:auto">AI 选浪</button>
+        <label class="why" style="margin-left:6px;cursor:pointer;user-select:none;white-space:nowrap">
+          <input type="checkbox" id="show-relaxed"> 放宽候选
+        </label>
       </div>
       <canvas id="kchart" height="420"></canvas>
       <div class="legend" id="klegend"></div>
@@ -2007,7 +2010,7 @@ const DEGREE_FONT = [8, 9, 10];
 const KChart = {
   cv: null, ctx: null, data: [], mas: {}, start: 0, count: 120,
   drag: null, hover: -1, W: 0, H: 420, period: 'day', wave: null,
-  ai: null, baseFib: null, waveMissing: false,
+  ai: null, baseFib: null, waveMissing: false, showRelaxed: false,
 
   init() {
     this.cv = document.getElementById('kchart');
@@ -2058,7 +2061,7 @@ const KChart = {
   },
 
   async load(symbol, period) {
-    const d = await request(`/api/kline/${encodeURIComponent(symbol)}?period=${period}&limit=800`);
+    const d = await request(`/api/kline/${encodeURIComponent(symbol)}?period=${period}&limit=1600`);
     if (symbol !== curSymbol || period !== curPeriod || !$('#view-detail').classList.contains('on')) return;
     if (!Array.isArray(d.bars)) throw new Error('服务返回了无效数据');
     this.data = d.bars || [];
@@ -2114,7 +2117,11 @@ const KChart = {
     const ai = (this.ai && this.ai.chosen)
       ? `<span class="lg" style="color:#e6e9ef"><i style="background:#e6e9ef"></i>AI 主数法 #${esc(this.ai.chosen.id)}</span>`
       : '';
-    el.innerHTML = status + degrees + fib + ai + hint;
+    const relaxedCount = (w.relaxed || []).length;
+    const relaxed = (this.showRelaxed && relaxedCount)
+      ? `<span class="lg"><i style="background:#8a93a6;opacity:.6"></i>放宽候选 ${relaxedCount} 组（未通过比例校验）</span>`
+      : '';
+    el.innerHTML = status + degrees + fib + ai + relaxed + hint;
   },
 
   onWheel(e) {
@@ -2260,15 +2267,15 @@ const KChart = {
     const aiKey = aiKeyRaw && (w.groups || []).some(g => keyOf(g.pivots) === aiKeyRaw)
       ? aiKeyRaw : null;
 
-    const drawSegments = (pts, color, width, alpha, solid = false) => {
+    const drawSegments = (pts, color, width, alpha, solid = false, dashAll = false) => {
       if (pts.length < 2) return;
       ctx.globalAlpha = alpha;
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i], b = pts[i + 1];
         if (b.x < left || a.x > right) continue;
         ctx.strokeStyle = color; ctx.lineWidth = width;
-        // 浪2、浪4 属调整组，用虚线区分
-        ctx.setLineDash(!solid && (i === 1 || i === 3) ? [5, 4] : []);
+        // 浪2、浪4 属调整组，用虚线区分；放宽候选整条都用虚线
+        ctx.setLineDash(dashAll ? [3, 4] : (!solid && (i === 1 || i === 3) ? [5, 4] : []));
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       }
       ctx.setLineDash([]); ctx.globalAlpha = 1;
@@ -2276,6 +2283,21 @@ const KChart = {
 
     // 当前结构未通过校验时，只画灰色候选，不冒充有效浪组
     drawSegments(toPts(w.candidate), '#8a93a6', 1.2, .5);
+
+    // 放宽候选：未通过比例校验的历史结构，灰色虚线，默认关闭
+    if (this.showRelaxed) {
+      (w.relaxed || []).forEach(grp => {
+        const pts = toPts(grp.pivots);
+        drawSegments(pts, '#8a93a6', 1.1, .4, false, true);
+        ctx.globalAlpha = .45;
+        pts.forEach(q => {
+          if (q.x < left || q.x > right) return;
+          ctx.fillStyle = '#8a93a6';
+          ctx.beginPath(); ctx.arc(q.x, q.y, 1.8, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+      });
+    }
 
     // 所有级别浪组：一组一色，小级别先画、大级别压在上层
     const groups = (w.groups || []).map((grp, i) =>
@@ -2355,6 +2377,22 @@ const KChart = {
         ctx.fillStyle = color; ctx.fillText(String(i), x, ty);
       });
     });
+
+    // 放宽候选只标一个“放”，避免和严格浪组的编号挤在一起
+    if (this.showRelaxed) {
+      ctx.font = '600 9px system-ui'; ctx.textAlign = 'center';
+      (w.relaxed || []).forEach(grp => {
+        const pts = toPts(grp.pivots);
+        if (!pts.length) return;
+        const q = pts[0];
+        if (q.x < left || q.x > right) return;
+        const x = Math.max(left + 8, Math.min(right - 8, q.x));
+        const ty = Math.max(top + 7, Math.min(bottom - 3, q.y - 9));
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,15,22,.9)';
+        ctx.strokeText('放', x, ty);
+        ctx.fillStyle = '#8a93a6'; ctx.fillText('放', x, ty);
+      });
+    }
 
     // AI 主数法标记
     if (aiKey) {
@@ -2506,6 +2544,11 @@ function renderWaveAI(r) {
 }
 
 $('#ai-wave').onclick = runAIWave;
+$('#show-relaxed').onchange = e => {
+  KChart.showRelaxed = e.target.checked;
+  KChart.updateWaveLegend();
+  KChart.draw();
+};
 
 /* AI 研判：事件委托，面板重绘后按钮仍可用 */
 $('#d-ai').addEventListener('click', e => {

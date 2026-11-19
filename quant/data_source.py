@@ -50,6 +50,43 @@ def fetch_daily(code: str, count: int = 800, adjust: str = "qfq") -> pd.DataFram
     return fetch_kline(code, "day", count, adjust)
 
 
+def fetch_kline_history(code: str, period: str = "day", count: int = 1600,
+                        adjust: str = "qfq", page: int = 800) -> pd.DataFrame:
+    """按 end 日期向前翻页，取更长的历史；只读，不写库。
+
+    腾讯接口对大 count 会截断（不同标的截断长度还不一样），但带 end 日期时
+    每页能稳定返回 page 根，所以用「上一页最早日期 - 1 天」继续往前翻。
+    """
+    sym = to_symbol(code)
+    frames = []
+    end = None
+    for _ in range(4):
+        param = f"{sym},{period},,{end or ''},{page},{adjust}"
+        r = requests.get(URL, params={"param": param}, headers=HEADERS, timeout=20)
+        r.raise_for_status()
+        node = r.json().get("data", {}).get(sym) or {}
+        bars = node.get(f"{adjust}{period}") or node.get(period) or []
+        if not bars:
+            break
+        df = pd.DataFrame([b[:6] for b in bars], columns=COLS)
+        for c in COLS[1:]:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df.insert(0, "symbol", sym)
+        df = df.dropna(subset=["open", "close"])
+        if df.empty:
+            break
+        frames.append(df)
+        if sum(len(x) for x in frames) >= count or len(df) < page:
+            break
+        first = str(df["trade_date"].iloc[0])[:10]
+        end = (pd.Timestamp(first) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    if not frames:
+        raise ValueError(f"{sym} 无 {period} K 线数据（接口返回空）")
+    out = pd.concat(frames, ignore_index=True)
+    out = out.drop_duplicates(subset=["trade_date"]).sort_values("trade_date")
+    return out.tail(count).reset_index(drop=True)
+
+
 def save(df: pd.DataFrame, db: str = DB, table: str = "kline_daily") -> int:
     con = duckdb.connect(db)
     con.execute(f"""

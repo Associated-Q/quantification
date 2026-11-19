@@ -74,6 +74,7 @@ def test_wave_overlay_aligns_pivots_with_timestamps():
     assert res["valid"] is True
     ov = webapp._wave_overlay(df, res, "trade_date")
     assert ov["valid"] is True and ov["candidate"] == []
+    assert isinstance(ov["relaxed"], list)
     assert ov["groups"] and any(g.get("current") for g in ov["groups"])
     for g in ov["groups"]:
         for p in g["pivots"]:
@@ -89,5 +90,6 @@ def test_wave_overlay_keeps_real_reason_and_swing_fib_when_invalid():
     ov = webapp._wave_overlay(df, res, "trade_date")
     assert ov["valid"] is False and "浪4" in ov["why"]
     assert len(ov["candidate"]) == 6
+    assert isinstance(ov["relaxed"], list)
     assert ov["fib"]["source"] in ("group", "swing")
     assert len(ov["fib"]["levels"]) == len(webapp.wv.FIB_RATIOS)
